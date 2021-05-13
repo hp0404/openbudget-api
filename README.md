@@ -1,6 +1,6 @@
 # About
 
-This repository contains **REPO** package that ... 
+This repository contains **openbudget** python API wrapper. 
 
 
 ## Installation
@@ -9,8 +9,8 @@ This repository contains **REPO** package that ...
 To use or contribute to this repository, first checkout the code. Then create a new virtual environment:
 
 ```bash
-$ git clone https://github.com/hcss-utils/REPO.git
-$ cd REPO
+$ git clone https://github.com/hcss-utils/openbudget-api.git
+$ cd openbudget-api
 $ python3 -m venv env
 $ . env/bin/activate
 ```
@@ -30,7 +30,7 @@ Alternatively, use `make`:
 ### Google colab
 To use this package from google colab, run:
 ```bash
-!pip -q --no-cache-dir install git+https://github.com/hcss-utils/REPO.git
+!pip -q --no-cache-dir install git+https://github.com/hp0404/openbudget-api.git
 ```
 
 ## Usage
