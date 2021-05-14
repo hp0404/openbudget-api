@@ -160,8 +160,8 @@ class Openbudget(BudgetConfig):
             data = pd.concat(
                 self._fetch_all(Openbudget.ABOUT_BUDGET_URL), ignore_index=True
             )
-            filtered_data = about.loc[
-                about["budgetCode"].isin(self._convert_tolist(self.codes))
+            filtered_data = data.loc[
+                data["budgetCode"].isin(self._convert_tolist(self.codes))
             ]
             self._about = filtered_data
         return self._about
