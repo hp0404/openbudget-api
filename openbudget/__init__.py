@@ -5,12 +5,15 @@ from typing import Any, Dict, List
 import pandas as pd
 from requests import Request
 
+from .constants import BudgetConfig
+
+
 __version__ = "0.1.1"
 
 
-class Openbudget:
+class Openbudget(BudgetConfig):
     """
-    Fetches budget's structure, income, and expenses data from openbudget API.
+    Budget's structure, income, and expenses data retrived from openbudget API.
 
     Attributes
     ----------
@@ -38,41 +41,6 @@ class Openbudget:
         fetch budgets' expenses while creating an instance of a class,
         defaults to True
     """
-
-    INCOMES_URL = "https://openbudget.gov.ua/api/localBudgets/incomesLocal/CSV"
-    EXPENSES_URL = "https://openbudget.gov.ua/api/localBudgets/functional/CSV"
-    ABOUT_BUDGET_URL = (
-        "https://openbudget.gov.ua/api/localBudgets/aboutBudgets/plain/CSV"
-    )
-    COLS = {
-        "incomeCode": "код",
-        "incomeCodeName": "найменування коду",
-        "yearBudgetPlan": "розпис на рік",
-        "yearBudgetEstimate": "кошторис на рік",
-        "totalDone": "виконано всього",
-        "percentDone": "відсоток виконання",
-        "codeBudget": "код бюджету",
-        "fundType": "тип фонду",
-        "programCode": "КПК",
-        "programCodeName": "найменування КПК",
-        "functionCode": "КФК",
-        "functionCodeName": "найменування КФК",
-        "doneSpecialFund": "виконано спец фонд",
-        "doneService": "виконано послуги",
-        "doneOther": "виконано інші джерела",
-        "totalBankAccount": "у банках всього",
-        "bankSpecialFund": "у банках спец фонд",
-        "bankService": "у банках послуги",
-        "bankOther": "у банках інші джерела",
-        "budgetCode": "код бюджету",
-        "budgetName": "найменування бюджету",
-        "koatuu": "код КОАТУУ",
-        "terUnit": "адміністративно-територіальна одиниця",
-        "year": "рік",
-        "monthTo": "кінець періоду",
-        "monthFrom": "початок періоду",
-        "treeType": "ієрархічне представлення",
-    }
 
     def __init__(
         self,
@@ -189,10 +157,13 @@ class Openbudget:
     def fetch_about(self, forced: bool = False):
         """Fetch budget's metadata/structure."""
         if not self._check_exists(self._about) or forced:
-            about = pd.concat(
+            data = pd.concat(
                 self._fetch_all(Openbudget.ABOUT_BUDGET_URL), ignore_index=True
             )
-            self._about = about.loc[about["budgetCode"].isin(self.codes)]
+            filtered_data = about.loc[
+                about["budgetCode"].isin(self._convert_tolist(self.codes))
+            ]
+            self._about = filtered_data
         return self._about
 
     @property
