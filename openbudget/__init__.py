@@ -5,46 +5,42 @@ from typing import Any, Dict, List
 import pandas as pd
 from requests import Request
 
-__version__ = "0.1.0"
+from .constants import BudgetConfig
 
 
-class Openbudget:
-    """ """
+__version__ = "0.1.1"
 
-    INCOMES_URL = "https://openbudget.gov.ua/api/localBudgets/incomesLocal/CSV"
-    EXPENSES_URL = "https://openbudget.gov.ua/api/localBudgets/functional/CSV"
-    ABOUT_BUDGET_URL = (
-        "https://openbudget.gov.ua/api/localBudgets/aboutBudgets/plain/CSV"
-    )
-    COLS = {
-        "incomeCode": "код",
-        "incomeCodeName": "найменування коду",
-        "yearBudgetPlan": "розпис на рік",
-        "yearBudgetEstimate": "кошторис на рік",
-        "totalDone": "виконано всього",
-        "percentDone": "відсоток виконання",
-        "codeBudget": "код бюджету",
-        "fundType": "тип фонду",
-        "programCode": "КПК",
-        "programCodeName": "найменування КПК",
-        "functionCode": "КФК",
-        "functionCodeName": "найменування КФК",
-        "doneSpecialFund": "виконано спец фонд",
-        "doneService": "виконано послуги",
-        "doneOther": "виконано інші джерела",
-        "totalBankAccount": "у банках всього",
-        "bankSpecialFund": "у банках спец фонд",
-        "bankService": "у банках послуги",
-        "bankOther": "у банках інші джерела",
-        "budgetCode": "код бюджету",
-        "budgetName": "найменування бюджету",
-        "koatuu": "код КОАТУУ",
-        "terUnit": "адміністративно-територіальна одиниця",
-        "year": "рік",
-        "monthTo": "кінець періоду",
-        "monthFrom": "початок періоду",
-        "treeType": "ієрархічне представлення",
-    }
+
+class Openbudget(BudgetConfig):
+    """
+    Budget's structure, income, and expenses data retrived from openbudget API.
+
+    Attributes
+    ----------
+    codes: List[str]
+        budget codes, e.g. ["16100000000", "17100000000"]
+    years: List[int]
+        years to fetch data for (period)
+    month_from: int
+        first month of a period, defaults to 1
+    month_to: int
+        last month of a period, defaults to 12
+    fund_type: str
+        pass, defaults to TOTAL
+    tree_type: str
+        pass, defaults to WITHOUT_DETALISATION
+    translate: bool
+        translate en columns to ua, defaults to True
+    init_with_budgets_structure: bool
+        fetch budgets' structure while creating an instance of a class,
+        defaults to True
+    init_with_incomes: bool
+        fetch budgets' incomes while creating an instance of a class,
+        defaults to True
+    init_with_expenses: bool
+        fetch budgets' expenses while creating an instance of a class,
+        defaults to True
+    """
 
     def __init__(
         self,
@@ -55,6 +51,9 @@ class Openbudget:
         fund_type: str = "TOTAL",
         tree_type: str = "WITHOUT_DETALISATION",
         translate: bool = True,
+        init_with_budgets_structure: bool = True,
+        init_with_incomes: bool = False,
+        init_with_expenses: bool = False,
     ):
         self.codes = codes
         self.years = years
@@ -67,9 +66,13 @@ class Openbudget:
         self._incomes = None
         self._expenses = None
 
+        self.fetch_about() if init_with_budgets_structure else None
+        self.fetch_incomes() if init_with_incomes else None
+        self.fetch_expenses() if init_with_expenses else None
+
     @staticmethod
     def prepare_call(endpoint: str, params: Dict[str, Any]):
-        """Prepare url given `endpoint` and `params`."""
+        """Prepare url using `endpoint` and `params`."""
         req = Request("GET", endpoint, params=params)
         prepped = req.prepare()
         return prepped.url
@@ -90,60 +93,83 @@ class Openbudget:
 
     def _merge(self, left: pd.DataFrame, right: pd.DataFrame):
         """Join budget's metadata to main table."""
+        duplicated_columns = ["year", "monthTo", "monthFrom", "budgetCode", "fundType"]
         return pd.merge(
             left,
-            right.drop(
-                ["year", "monthTo", "monthFrom", "budgetCode", "fundType"], axis=1
-            ),
+            right.drop(duplicated_columns, axis=1),
             how="left",
             on="codeBudget",
         )
 
-    def _pairs(self):
+    def _check_exists(self, attrb: pd.DataFrame):
+        """Check if attribute exists (contains data)."""
+        return attrb is not None
+
+    def _convert_tolist(self, attrb):
+        """Covert int/str `attrb` values into a list."""
+        return [attrb] if isinstance(attrb, (int, str)) else attrb
+
+    def _iterate_over_period_budget(self):
         """Iterate over given years and codes"""
-        years = [self.years] if isinstance(self.years, int) else self.years
+        codes = self._convert_tolist(self.codes)
+        years = self._convert_tolist(self.years)
         for year in years:
-            for code in self.codes:
+            for code in codes:
                 yield year, code
 
-    def _fetch(self, endpoint: str):
-        """Private function that fetches data from a given endpoint."""
-        for year, code in self._pairs():
-            params = {
-                "year": year,
-                "monthTo": self.month_to,
-                "monthFrom": self.month_from,
-                "codeBudget": code,
-                "fundType": self.fund_type,
-            }
-            if endpoint == Openbudget.EXPENSES_URL:
-                params.update({"treeType": self.tree_type})
-            url = Openbudget.prepare_call(endpoint, params, return_url=True)
-            sleep(1.1)
-            yield Openbudget.to_dataframe(url, **params)
+    def _fetch(self, endpoint: str, year: int, code: str):
+        """Retrieve data from `endpoint` for a specific `year` and `code`."""
+        params = {
+            "year": year,
+            "monthTo": self.month_to,
+            "monthFrom": self.month_from,
+            "codeBudget": code,
+            "fundType": self.fund_type,
+        }
+        if endpoint == Openbudget.EXPENSES_URL:
+            params.update({"treeType": self.tree_type})
+        url = Openbudget.prepare_call(endpoint, params)
+        sleep(1.1)
+        yield Openbudget.to_dataframe(url, **params)
 
     def _fetch_all(self, endpoint: str):
-        """Concatenate results returned from `_fetch` function."""
-        return pd.concat(self._fetch(endpoint), ignore_index=True)
+        """Retrieve all data from `endpoint`; functions as a wrapper around
+        `_fetch` function."""
+        for year, code in self._iterate_over_period_budget():
+            yield from self._fetch(endpoint, year, code)
 
-    def fetch_incomes(self):
+    def fetch_incomes(self, forced: bool = False):
         """Fetch incomes table."""
-        self._incomes = self._fetch_all(Openbudget.INCOMES_URL)
+        if not self._check_exists(self._incomes) or forced:
+            self._incomes = pd.concat(
+                self._fetch_all(Openbudget.INCOMES_URL), ignore_index=True
+            )
         return self._incomes
 
-    def fetch_expenses(self):
+    def fetch_expenses(self, forced: bool = False):
         """Fetch expenses table."""
-        self._expenses = self._fetch_all(Openbudget.EXPENSES_URL)
+        if not self._check_exists(self._expenses) or forced:
+            self._expenses = pd.concat(
+                self._fetch_all(Openbudget.EXPENSES_URL), ignore_index=True
+            )
         return self._expenses
 
-    def fetch_about(self):
+    def fetch_about(self, forced: bool = False):
         """Fetch budget's metadata/structure."""
-        about = self._fetch_all(Openbudget.ABOUT_BUDGET_URL)
-        self._about = about.loc[about["budgetCode"].isin(self.codes)]
+        if not self._check_exists(self._about) or forced:
+            data = pd.concat(
+                self._fetch_all(Openbudget.ABOUT_BUDGET_URL), ignore_index=True
+            )
+            filtered_data = data.loc[
+                data["budgetCode"].isin(self._convert_tolist(self.codes))
+            ]
+            self._about = filtered_data
         return self._about
 
     @property
     def incomes(self):
+        """Prettified incomes table: joins budgets structure if available,
+        optionally translates columns to ukrainian."""
         if self._incomes is not None and self._about is not None:
             data = self._merge(self._incomes, self._about)
         elif self._incomes is not None and self._about is None:
@@ -155,6 +181,8 @@ class Openbudget:
 
     @property
     def expenses(self):
+        """Prettified expenses table: join budgets structure if available,
+        optionally translates columns to ukrainian."""
         if self._expenses is not None and self._about is not None:
             data = self._merge(self._expenses, self._about)
         elif self._expenses is not None and self._about is None:
