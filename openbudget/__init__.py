@@ -5,11 +5,20 @@ from typing import Any, Dict, List
 import pandas as pd
 from requests import Request
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 class Openbudget:
-    """ """
+    """
+    Desc
+
+    Attributes
+    ----------
+
+    Methods
+    -------
+
+    """
 
     INCOMES_URL = "https://openbudget.gov.ua/api/localBudgets/incomesLocal/CSV"
     EXPENSES_URL = "https://openbudget.gov.ua/api/localBudgets/functional/CSV"
@@ -90,11 +99,10 @@ class Openbudget:
 
     def _merge(self, left: pd.DataFrame, right: pd.DataFrame):
         """Join budget's metadata to main table."""
+        duplicated_columns = ["year", "monthTo", "monthFrom", "budgetCode", "fundType"]
         return pd.merge(
             left,
-            right.drop(
-                ["year", "monthTo", "monthFrom", "budgetCode", "fundType"], axis=1
-            ),
+            right.drop(duplicated_columns, axis=1),
             how="left",
             on="codeBudget",
         )
@@ -106,39 +114,45 @@ class Openbudget:
             for code in self.codes:
                 yield year, code
 
-    def _fetch(self, endpoint: str):
+    def _fetch(self, endpoint: str, year: int, code: str):
         """Private function that fetches data from a given endpoint."""
-        for year, code in self._pairs():
-            params = {
-                "year": year,
-                "monthTo": self.month_to,
-                "monthFrom": self.month_from,
-                "codeBudget": code,
-                "fundType": self.fund_type,
-            }
-            if endpoint == Openbudget.EXPENSES_URL:
-                params.update({"treeType": self.tree_type})
-            url = Openbudget.prepare_call(endpoint, params, return_url=True)
-            sleep(1.1)
-            yield Openbudget.to_dataframe(url, **params)
+        params = {
+            "year": year,
+            "monthTo": self.month_to,
+            "monthFrom": self.month_from,
+            "codeBudget": code,
+            "fundType": self.fund_type,
+        }
+        if endpoint == Openbudget.EXPENSES_URL:
+            params.update({"treeType": self.tree_type})
+        url = Openbudget.prepare_call(endpoint, params)
+        sleep(1.1)
+        yield Openbudget.to_dataframe(url, **params)
 
     def _fetch_all(self, endpoint: str):
         """Concatenate results returned from `_fetch` function."""
-        return pd.concat(self._fetch(endpoint), ignore_index=True)
+        for year, code in self._pairs():
+            yield from self._fetch(endpoint, year, code)
 
     def fetch_incomes(self):
         """Fetch incomes table."""
-        self._incomes = self._fetch_all(Openbudget.INCOMES_URL)
+        self._incomes = pd.concat(
+            self._fetch_all(Openbudget.INCOMES_URL), ignore_index=True
+        )
         return self._incomes
 
     def fetch_expenses(self):
         """Fetch expenses table."""
-        self._expenses = self._fetch_all(Openbudget.EXPENSES_URL)
+        self._expenses = pd.concat(
+            self._fetch_all(Openbudget.EXPENSES_URL), ignore_index=True
+        )
         return self._expenses
 
     def fetch_about(self):
         """Fetch budget's metadata/structure."""
-        about = self._fetch_all(Openbudget.ABOUT_BUDGET_URL)
+        about = pd.concat(
+            self._fetch_all(Openbudget.ABOUT_BUDGET_URL), ignore_index=True
+        )
         self._about = about.loc[about["budgetCode"].isin(self.codes)]
         return self._about
 
