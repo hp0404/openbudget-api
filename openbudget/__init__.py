@@ -64,6 +64,9 @@ class Openbudget:
         fund_type: str = "TOTAL",
         tree_type: str = "WITHOUT_DETALISATION",
         translate: bool = True,
+        init_with_budgets_structure: bool = True,
+        init_with_incomes: bool = False,
+        init_with_expenses: bool = False,
     ):
         self.codes = codes
         self.years = years
@@ -72,9 +75,13 @@ class Openbudget:
         self.fund_type = fund_type
         self.tree_type = tree_type
         self.translate = translate
-        self._about = None
+        self._about = None 
         self._incomes = None
-        self._expenses = None
+        self._expenses = None 
+
+        self.fetch_about() if init_with_budgets_structure else None
+        self.fetch_incomes() if init_with_incomes else None
+        self.fetch_expenses() if init_with_expenses else None
 
     @staticmethod
     def prepare_call(endpoint: str, params: Dict[str, Any]):
@@ -96,6 +103,10 @@ class Openbudget:
         for key, value in kwargs.items():
             df[key] = value
         return df
+
+    def _check_exists(self, attrb):
+        """Check if attribute contains data."""
+        return attrb is not None
 
     def _merge(self, left: pd.DataFrame, right: pd.DataFrame):
         """Join budget's metadata to main table."""
@@ -134,26 +145,29 @@ class Openbudget:
         for year, code in self._pairs():
             yield from self._fetch(endpoint, year, code)
 
-    def fetch_incomes(self):
+    def fetch_incomes(self, forced: bool = False):
         """Fetch incomes table."""
-        self._incomes = pd.concat(
-            self._fetch_all(Openbudget.INCOMES_URL), ignore_index=True
-        )
+        if not self._check_exists(self._incomes) or forced:
+            self._incomes = pd.concat(
+                self._fetch_all(Openbudget.INCOMES_URL), ignore_index=True
+            )
         return self._incomes
 
-    def fetch_expenses(self):
+    def fetch_expenses(self, forced: bool = False):
         """Fetch expenses table."""
-        self._expenses = pd.concat(
-            self._fetch_all(Openbudget.EXPENSES_URL), ignore_index=True
-        )
+        if not self._check_exists(self._expenses) or forced:
+            self._expenses = pd.concat(
+                self._fetch_all(Openbudget.EXPENSES_URL), ignore_index=True
+            )
         return self._expenses
 
-    def fetch_about(self):
+    def fetch_about(self, forced: bool = False):
         """Fetch budget's metadata/structure."""
-        about = pd.concat(
-            self._fetch_all(Openbudget.ABOUT_BUDGET_URL), ignore_index=True
-        )
-        self._about = about.loc[about["budgetCode"].isin(self.codes)]
+        if not self._check_exists(self._about) or forced:
+            about = pd.concat(
+                self._fetch_all(Openbudget.ABOUT_BUDGET_URL), ignore_index=True
+            )
+            self._about = about.loc[about["budgetCode"].isin(self.codes)]
         return self._about
 
     @property
