@@ -10,14 +10,33 @@ __version__ = "0.1.1"
 
 class Openbudget:
     """
-    Desc
+    Fetches budget's structure, income, and expenses data from openbudget API.
 
     Attributes
     ----------
-
-    Methods
-    -------
-
+    codes: List[str]
+        budget codes, e.g. ["16100000000", "17100000000"]
+    years: List[int]
+        years to fetch data for (period)
+    month_from: int
+        first month of a period, defaults to 1
+    month_to: int
+        last month of a period, defaults to 12
+    fund_type: str
+        pass, defaults to TOTAL
+    tree_type: str
+        pass, defaults to WITHOUT_DETALISATION
+    translate: bool
+        translate en columns to ua, defaults to True
+    init_with_budgets_structure: bool
+        fetch budgets' structure while creating an instance of a class,
+        defaults to True
+    init_with_incomes: bool
+        fetch budgets' incomes while creating an instance of a class,
+        defaults to True
+    init_with_expenses: bool
+        fetch budgets' expenses while creating an instance of a class,
+        defaults to True
     """
 
     INCOMES_URL = "https://openbudget.gov.ua/api/localBudgets/incomesLocal/CSV"
@@ -75,9 +94,9 @@ class Openbudget:
         self.fund_type = fund_type
         self.tree_type = tree_type
         self.translate = translate
-        self._about = None 
+        self._about = None
         self._incomes = None
-        self._expenses = None 
+        self._expenses = None
 
         self.fetch_about() if init_with_budgets_structure else None
         self.fetch_incomes() if init_with_incomes else None
@@ -85,7 +104,7 @@ class Openbudget:
 
     @staticmethod
     def prepare_call(endpoint: str, params: Dict[str, Any]):
-        """Prepare url given `endpoint` and `params`."""
+        """Prepare url using `endpoint` and `params`."""
         req = Request("GET", endpoint, params=params)
         prepped = req.prepare()
         return prepped.url
@@ -104,10 +123,6 @@ class Openbudget:
             df[key] = value
         return df
 
-    def _check_exists(self, attrb):
-        """Check if attribute contains data."""
-        return attrb is not None
-
     def _merge(self, left: pd.DataFrame, right: pd.DataFrame):
         """Join budget's metadata to main table."""
         duplicated_columns = ["year", "monthTo", "monthFrom", "budgetCode", "fundType"]
@@ -118,15 +133,24 @@ class Openbudget:
             on="codeBudget",
         )
 
-    def _pairs(self):
+    def _check_exists(self, attrb: pd.DataFrame):
+        """Check if attribute exists (contains data)."""
+        return attrb is not None
+
+    def _convert_tolist(self, attrb):
+        """Covert int/str `attrb` values into a list."""
+        return [attrb] if isinstance(attrb, (int, str)) else attrb
+
+    def _iterate_over_period_budget(self):
         """Iterate over given years and codes"""
-        years = [self.years] if isinstance(self.years, int) else self.years
+        codes = self._convert_tolist(self.codes)
+        years = self._convert_tolist(self.years)
         for year in years:
-            for code in self.codes:
+            for code in codes:
                 yield year, code
 
     def _fetch(self, endpoint: str, year: int, code: str):
-        """Private function that fetches data from a given endpoint."""
+        """Retrieve data from `endpoint` for a specific `year` and `code`."""
         params = {
             "year": year,
             "monthTo": self.month_to,
@@ -141,8 +165,9 @@ class Openbudget:
         yield Openbudget.to_dataframe(url, **params)
 
     def _fetch_all(self, endpoint: str):
-        """Concatenate results returned from `_fetch` function."""
-        for year, code in self._pairs():
+        """Retrieve all data from `endpoint`; functions as a wrapper around
+        `_fetch` function."""
+        for year, code in self._iterate_over_period_budget():
             yield from self._fetch(endpoint, year, code)
 
     def fetch_incomes(self, forced: bool = False):
@@ -172,6 +197,8 @@ class Openbudget:
 
     @property
     def incomes(self):
+        """Prettified incomes table: joins budgets structure if available,
+        optionally translates columns to ukrainian."""
         if self._incomes is not None and self._about is not None:
             data = self._merge(self._incomes, self._about)
         elif self._incomes is not None and self._about is None:
@@ -183,6 +210,8 @@ class Openbudget:
 
     @property
     def expenses(self):
+        """Prettified expenses table: join budgets structure if available,
+        optionally translates columns to ukrainian."""
         if self._expenses is not None and self._about is not None:
             data = self._merge(self._expenses, self._about)
         elif self._expenses is not None and self._about is None:
