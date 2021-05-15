@@ -101,6 +101,17 @@ class Openbudget(BudgetConfig):
             on="codeBudget",
         )
 
+    def _prettify(self, left: pd.DataFrame):
+        """Join budgets' structure if available."""
+        left_exists = self._check_exists(left)
+        meta_exists = self._check_exists(self._about)
+        if left_exists and meta_exists:
+            return self._merge(left, self._about)
+        elif left_exists and not meta_exists:
+            print("Run fetch_about() to join budget's structure.")
+            return left
+        raise ValueError(f"Fetch data first.")
+
     def _check_exists(self, attrb: pd.DataFrame):
         """Check if attribute exists (contains data)."""
         return attrb is not None
@@ -168,26 +179,12 @@ class Openbudget(BudgetConfig):
 
     @property
     def incomes(self):
-        """Prettified incomes table: joins budgets structure if available,
-        optionally translates columns to ukrainian."""
-        if self._incomes is not None and self._about is not None:
-            data = self._merge(self._incomes, self._about)
-        elif self._incomes is not None and self._about is None:
-            print("To join metadata, run fetch_about() first")
-            data = self._incomes
-        else:
-            raise ValueError("Run fetch_incomes() first.")
+        """Prettified incomes table, optionally translates columns to uk."""
+        data = self._prettify(self._incomes)
         return data.rename(columns=Openbudget.COLS) if self.translate else data
 
     @property
     def expenses(self):
-        """Prettified expenses table: join budgets structure if available,
-        optionally translates columns to ukrainian."""
-        if self._expenses is not None and self._about is not None:
-            data = self._merge(self._expenses, self._about)
-        elif self._expenses is not None and self._about is None:
-            print("To join metadata, run fetch_about() first")
-            data = self._expenses
-        else:
-            raise ValueError("Run fetch_expenses() first.")
+        """Prettified expenses table, optionally translates columns to uk."""
+        data = self._prettify(self._expenses)
         return data.rename(columns=Openbudget.COLS) if self.translate else data
