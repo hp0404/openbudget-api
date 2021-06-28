@@ -2,5 +2,5 @@
 -e .
 
 # external requirements
-pandas==1.2.4
+pandas==1.2.5
 requests==2.25.1
