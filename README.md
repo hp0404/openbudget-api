@@ -1,4 +1,4 @@
-# About
+# Openbudget
 
 This repository contains **openbudget** python API wrapper. 
 
@@ -17,8 +17,10 @@ $ . env/bin/activate
 
 Install the package and its dependencies
 ```bash
-(env)$ pip install -r requirements.txt 
-(env)$ pip install -r requirements-dev.txt
+(env)$ python -m pip install --upgrade pip setuptools wheel
+(env)$ python -m pip install -r requirements.txt
+(env)$ python -m pip install -r requirements-dev.txt
+(env)$ python -m pip install -e .
 ```
 
 Alternatively, use `make`:
@@ -67,4 +69,15 @@ regions_2018_2020 = Openbudget(
     init_with_incomes=False
 )
 print(regions_2018_2020.expenses)
+
+# create an instance of a class without fetching data
+kyiv_2021 = Openbudget(
+    codes="26000000000",
+    years=2021,
+    month_from=1,
+    month_to=3,
+)
+print(kyiv_2021.fetch_incomes())
+print(kyiv_2021.fetch_expenses())
+print(kyiv_2021.incomes)
 ```
