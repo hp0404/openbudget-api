@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
+"""Docstring."""
+import io
 from time import sleep
-from typing import Any, Dict, List
+from typing import Dict, Iterator, List, Tuple, Union
 
-import pandas as pd
-from requests import Request
+import pandas as pd  # type: ignore
+import requests
 
 from .constants import BudgetConfig
-
 
 __version__ = "0.1.1"
 
@@ -70,18 +71,31 @@ class Openbudget(BudgetConfig):
         self.fetch_incomes() if init_with_incomes else None
         self.fetch_expenses() if init_with_expenses else None
 
+    @property
+    def incomes(self) -> pd.DataFrame:
+        """Prettified incomes table, optionally translates columns to uk."""
+        data = self.prettify(self._incomes)
+        return data.rename(columns=Openbudget.COLS) if self.translate else data
+
+    @property
+    def expenses(self) -> pd.DataFrame:
+        """Prettified expenses table, optionally translates columns to uk."""
+        data = self.prettify(self._expenses)
+        return data.rename(columns=Openbudget.COLS) if self.translate else data
+
     @staticmethod
-    def prepare_call(endpoint: str, params: Dict[str, Any]):
+    def prepare_call(endpoint: str, params: Dict[str, Union[str, int]]) -> str:
         """Prepare url using `endpoint` and `params`."""
-        req = Request("GET", endpoint, params=params)
+        req = requests.Request("GET", endpoint, params=params)
         prepped = req.prepare()
         return prepped.url
 
     @staticmethod
-    def to_dataframe(path: str, **kwargs):
+    def to_dataframe(path: str, **kwargs) -> pd.DataFrame:
         """Read url into `pandas.DataFrame`."""
+        content = requests.get(path).content
         df = pd.read_csv(
-            path,
+            io.StringIO(content.decode("cp1251")),
             sep=";",
             encoding="cp1251",
             skiprows=1,
@@ -91,44 +105,49 @@ class Openbudget(BudgetConfig):
             df[key] = value
         return df
 
-    def _merge(self, left: pd.DataFrame, right: pd.DataFrame):
+    @staticmethod
+    def merge(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
         """Join budget's metadata to main table."""
-        duplicated_columns = ["year", "monthTo", "monthFrom", "budgetCode", "fundType"]
+        duped_cols = ["year", "monthTo", "monthFrom", "budgetCode", "fundType"]
         return pd.merge(
             left,
-            right.drop(duplicated_columns, axis=1),
+            right.drop(duped_cols, axis=1),
             how="left",
             on="codeBudget",
         )
 
-    def _prettify(self, left: pd.DataFrame):
-        """Join budgets' structure if available."""
-        left_exists = self._check_exists(left)
-        meta_exists = self._check_exists(self._about)
-        if left_exists and meta_exists:
-            return self._merge(left, self._about)
-        elif left_exists and not meta_exists:
-            print("Run fetch_about() to join budget's structure.")
-            return left
-        raise ValueError(f"Fetch data first.")
-
-    def _check_exists(self, attrb: pd.DataFrame):
+    @staticmethod
+    def check_exists(attrb: pd.DataFrame) -> bool:
         """Check if attribute exists (contains data)."""
         return attrb is not None
 
-    def _convert_tolist(self, attrb):
+    @staticmethod
+    def convert_tolist(
+        attrb: Union[List[int], List[str], int, str]
+    ) -> Union[List[int], List[str]]:
         """Covert int/str `attrb` values into a list."""
         return [attrb] if isinstance(attrb, (int, str)) else attrb
 
-    def _iterate_over_period_budget(self):
+    def prettify(self, left: pd.DataFrame) -> pd.DataFrame:
+        """Join budgets' structure if available."""
+        left_exists = self.check_exists(left)
+        meta_exists = self.check_exists(self._about)
+        if left_exists and meta_exists:
+            return self.merge(left, self._about)
+        if left_exists and not meta_exists:
+            print("Run fetch_about() to join budget's structure.")
+            return left
+        raise ValueError("Fetch data first.")
+
+    def _iterate_over_period_budget(self) -> Iterator[Tuple[int, str]]:
         """Iterate over given years and codes"""
-        codes = self._convert_tolist(self.codes)
-        years = self._convert_tolist(self.years)
+        codes = self.convert_tolist(self.codes)
+        years = self.convert_tolist(self.years)
         for year in years:
             for code in codes:
                 yield year, code
 
-    def _fetch(self, endpoint: str, year: int, code: str):
+    def _fetch(self, endpoint: str, year: int, code: str) -> Iterator[pd.DataFrame]:
         """Retrieve data from `endpoint` for a specific `year` and `code`."""
         params = {
             "year": year,
@@ -143,48 +162,36 @@ class Openbudget(BudgetConfig):
         sleep(1.1)
         yield Openbudget.to_dataframe(url, **params)
 
-    def _fetch_all(self, endpoint: str):
+    def _fetch_all(self, endpoint: str) -> Iterator[pd.DataFrame]:
         """Retrieve all data from `endpoint`; functions as a wrapper around
         `_fetch` function."""
         for year, code in self._iterate_over_period_budget():
             yield from self._fetch(endpoint, year, code)
 
-    def fetch_incomes(self, forced: bool = False):
+    def fetch_incomes(self, forced: bool = False) -> pd.DataFrame:
         """Fetch incomes table."""
-        if not self._check_exists(self._incomes) or forced:
+        if not self.check_exists(self._incomes) or forced:
             self._incomes = pd.concat(
                 self._fetch_all(Openbudget.INCOMES_URL), ignore_index=True
             )
         return self._incomes
 
-    def fetch_expenses(self, forced: bool = False):
+    def fetch_expenses(self, forced: bool = False) -> pd.DataFrame:
         """Fetch expenses table."""
-        if not self._check_exists(self._expenses) or forced:
+        if not self.check_exists(self._expenses) or forced:
             self._expenses = pd.concat(
                 self._fetch_all(Openbudget.EXPENSES_URL), ignore_index=True
             )
         return self._expenses
 
-    def fetch_about(self, forced: bool = False):
+    def fetch_about(self, forced: bool = False) -> pd.DataFrame:
         """Fetch budget's metadata/structure."""
-        if not self._check_exists(self._about) or forced:
+        if not self.check_exists(self._about) or forced:
             data = pd.concat(
                 self._fetch_all(Openbudget.ABOUT_BUDGET_URL), ignore_index=True
             )
             filtered_data = data.loc[
-                data["budgetCode"].isin(self._convert_tolist(self.codes))
+                data["budgetCode"].isin(self.convert_tolist(self.codes))
             ]
             self._about = filtered_data
         return self._about
-
-    @property
-    def incomes(self):
-        """Prettified incomes table, optionally translates columns to uk."""
-        data = self._prettify(self._incomes)
-        return data.rename(columns=Openbudget.COLS) if self.translate else data
-
-    @property
-    def expenses(self):
-        """Prettified expenses table, optionally translates columns to uk."""
-        data = self._prettify(self._expenses)
-        return data.rename(columns=Openbudget.COLS) if self.translate else data
